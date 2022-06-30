@@ -50,6 +50,7 @@ namespace BombermanObjectCompiler
         public static int CurDLOffset;
         public static Dictionary<string, byte> ImageFormats = new Dictionary<string, byte>();
         public static Dictionary<string, byte> SizeFormats = new Dictionary<string, byte>();
+        public static Dictionary<string, byte> TextureMicrocodes = new Dictionary<string, byte>();
 
         static void Main(string[] args)
         {
@@ -208,7 +209,7 @@ namespace BombermanObjectCompiler
                 ImageFormats.Add("G_IM_FMT_YUV", 1);
                 ImageFormats.Add("G_IM_FMT_CI", 2);
                 ImageFormats.Add("G_IM_FMT_IA", 3);
-                ImageFormats.Add("G_IM_FMT_I", 4);
+                ImageFormats.Add("0", 0);
 
                 SizeFormats.Add("G_IM_SIZ_4b", 0);
                 SizeFormats.Add("G_IM_SIZ_8b", 1);
@@ -246,6 +247,16 @@ namespace BombermanObjectCompiler
                 SizeFormats.Add("G_IM_SIZ_8b_INCR", 1);
                 SizeFormats.Add("G_IM_SIZ_16b_INCR", 0);
                 SizeFormats.Add("G_IM_SIZ_32b_INCR", 0);
+                SizeFormats.Add("0", 0);
+
+                TextureMicrocodes.Add("G_TX_LOADTILE", 7);
+                TextureMicrocodes.Add("G_TX_RENDERTILE", 0);
+                TextureMicrocodes.Add("G_TX_NOMIRROR", 0);
+                TextureMicrocodes.Add("G_TX_WRAP", 0);
+                TextureMicrocodes.Add("G_TX_MIRROR", 1);
+                TextureMicrocodes.Add("G_TX_CLAMP", 2);
+                TextureMicrocodes.Add("G_TX_NOMASK", 0);
+                TextureMicrocodes.Add("G_TX_NOLOD", 0);
                 #endregion
 
                 ParseDL(MainFile, MainDLOffset, TexturePairs, Vertices, ref OutData);
@@ -488,6 +499,172 @@ namespace BombermanObjectCompiler
                 case "gsDPTileSync":
                     {
                         Outdata.AddRange(new byte[] { 0xE8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
+                        break;
+                    }
+                case "gsDPSetTile":
+                    {
+                        //crikey
+                        string[] Params = GetParams(File[Line]);
+                        UInt64 OutBuf = 0xF500000000000000;
+
+                        OutBuf |= (ulong)((ulong)ImageFormats[Params[0].Trim()] << 53);
+                        OutBuf |= (ulong)((ulong)SizeFormats[Params[1].Trim()] << 51);
+                        
+                        short BitValues = short.Parse(Params[2]);
+                        BitValues = (short)(BitValues & 0b0000000111111111);
+                        OutBuf |= (ulong)((ulong)BitValues << 41);
+
+                        BitValues = short.Parse(Params[3]);
+                        BitValues = (short)(BitValues & 0b0000000111111111);
+                        OutBuf |= (ulong)((ulong)BitValues << 32);
+
+                        byte Descriptor = byte.Parse(Params[4]);
+                        Descriptor = (byte)(Descriptor & 0b00000111);
+                        OutBuf |= (ulong)((ulong)Descriptor << 24);
+
+                        Descriptor = byte.Parse(Params[5]);
+                        Descriptor = (byte)(Descriptor & 0b00001111);
+                        OutBuf |= (ulong)((ulong)Descriptor << 20);
+
+                        string[] TextureModes = Params[6].Split('|');
+                        Descriptor = 0;
+                        foreach(string s in TextureModes)
+                        {
+                            Descriptor |= (byte)TextureMicrocodes[s.Trim()];
+                        }
+                        Descriptor &= (byte)0b00000011;
+                        OutBuf |= (ulong)((ulong)Descriptor << 18);
+
+                        Descriptor = byte.Parse(Params[7]);
+                        Descriptor = (byte)(Descriptor & 0b00001111);
+                        OutBuf |= (ulong)((ulong)Descriptor << 14);
+
+                        Descriptor = byte.Parse(Params[8]);
+                        Descriptor = (byte)(Descriptor & 0b00001111);
+                        OutBuf |= (ulong)((ulong)Descriptor << 10);
+
+                        TextureModes = Params[9].Split('|');
+                        Descriptor = 0;
+                        foreach (string s in TextureModes)
+                        {
+                            Descriptor |= (byte)TextureMicrocodes[s.Trim()];
+                        }
+                        Descriptor &= (byte)0b00000011;
+                        OutBuf |= (ulong)((ulong)Descriptor << 8);
+
+                        Descriptor = byte.Parse(Params[10]);
+                        Descriptor = (byte)(Descriptor & 0b00001111);
+                        OutBuf |= (ulong)((ulong)Descriptor << 4);
+
+                        Descriptor = byte.Parse(Params[11]);
+                        Descriptor = (byte)(Descriptor & 0b00001111);
+                        OutBuf |= (ulong)((ulong)Descriptor);
+
+                        byte[] buf = BitConverter.GetBytes(OutBuf);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+                        break;
+                    }
+                case "gsDPLoadSync":
+                    {
+                        Outdata.AddRange(new byte[]{ 0xE6, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00});
+                        break;
+                    }
+                case "gsDPLoadTLUTCmd":
+                    {
+                        UInt64 OutBuf = 0xF000000000000000;
+                        string[] Params = GetParams(File[Line]);
+
+                        byte Descriptor = byte.Parse(Params[0]);
+                        OutBuf |= ((UInt64)Descriptor << 24);
+
+                        ushort ColourCount = ushort.Parse(Params[1]);
+                        OutBuf |= ((UInt64)Descriptor << 12);
+
+                        byte[] buf = BitConverter.GetBytes(OutBuf);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+
+                        break;
+                    }
+                case "gsDPLoadBlock":
+                    {
+                        string[] Params = GetParams(File[Line]);
+
+                        UInt64 OutBuf = 0xF300000000000000;
+                        ushort Dat = ushort.Parse(Params[0]);
+                        OutBuf |= (UInt64)Dat<<44;
+                        Dat = ushort.Parse(Params[1]);
+                        OutBuf |= (UInt64)Dat << 32;
+                        Dat = ushort.Parse(Params[2]);
+                        OutBuf |= (UInt64)Dat << 24;
+                        Dat = ushort.Parse(Params[3]);
+                        OutBuf |= (UInt64)Dat << 12;
+                        Dat = ushort.Parse(Params[3]);
+                        OutBuf |= (UInt64)Dat;
+
+                        byte[] buf = BitConverter.GetBytes(OutBuf);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+                        break;
+                    }
+                case "gsDPSetTileSize":
+                    {
+                        string[] Params = GetParams(File[Line]);
+
+                        UInt64 OutBuf = 0xF200000000000000;
+                        ushort Dat = ushort.Parse(Params[0]);
+                        OutBuf |= (UInt64)Dat << 44;
+                        Dat = ushort.Parse(Params[1]);
+                        OutBuf |= (UInt64)Dat << 32;
+                        Dat = ushort.Parse(Params[2]);
+                        OutBuf |= (UInt64)Dat << 24;
+                        Dat = ushort.Parse(Params[3]);
+                        OutBuf |= (UInt64)Dat << 12;
+                        Dat = ushort.Parse(Params[3]);
+                        OutBuf |= (UInt64)Dat;
+
+                        byte[] buf = BitConverter.GetBytes(OutBuf);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+                        break;
+                    }
+                case "gsSP2Triangles":
+                    {
+                        string[] Params = GetParams(File[Line]);
+
+                        UInt64 OutBuf = 0xB100000000000000;
+
+                        for(int i = 0; i < Params.Length - 1; i++)
+                        {
+                            byte dat = byte.Parse(Params[i]);
+                            OutBuf |= ((UInt64)dat << 8 * (Params.Length - 2 - i));
+                        }
+
+
+                        byte[] buf = BitConverter.GetBytes(OutBuf);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+                        break;
+                    }
+                case "gsSPSetOtherMode":
+                    {
+
                         break;
                     }
                 default:

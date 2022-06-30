@@ -48,6 +48,8 @@ namespace BombermanObjectCompiler
 
         public static int MainDLOffset;
         public static int CurDLOffset;
+        public static Dictionary<string, byte> ImageFormats = new Dictionary<string, byte>();
+        public static Dictionary<string, byte> SizeFormats = new Dictionary<string, byte>();
 
         static void Main(string[] args)
         {
@@ -201,6 +203,51 @@ namespace BombermanObjectCompiler
 
                 Console.WriteLine("Vertex Data parsed");
 
+                #region DEFINES
+                ImageFormats.Add("G_IM_FMT_RGBA", 0);
+                ImageFormats.Add("G_IM_FMT_YUV", 1);
+                ImageFormats.Add("G_IM_FMT_CI", 2);
+                ImageFormats.Add("G_IM_FMT_IA", 3);
+                ImageFormats.Add("G_IM_FMT_I", 4);
+
+                SizeFormats.Add("G_IM_SIZ_4b", 0);
+                SizeFormats.Add("G_IM_SIZ_8b", 1);
+                SizeFormats.Add("G_IM_SIZ_16b", 2);
+                SizeFormats.Add("G_IM_SIZ_32b", 3);
+                SizeFormats.Add("G_IM_SIZ_DD", 5);
+
+                SizeFormats.Add("G_IM_SIZ_4b_BYTES", 0);
+                SizeFormats.Add("G_IM_SIZ_4b_TILE_BYTES", 0);
+                SizeFormats.Add("G_IM_SIZ_4b_LINE_BYTES", 0);
+
+                SizeFormats.Add("G_IM_SIZ_8b_BYTES", 1);
+                SizeFormats.Add("G_IM_SIZ_8b_TILE_BYTES", 1);
+                SizeFormats.Add("G_IM_SIZ_8b_LINE_BYTES", 1);
+
+                SizeFormats.Add("G_IM_SIZ_16b_BYTES", 2);
+                SizeFormats.Add("G_IM_SIZ_16b_TILE_BYTES", 2);
+                SizeFormats.Add("G_IM_SIZ_16b_LINE_BYTES", 2);
+
+                SizeFormats.Add("G_IM_SIZ_32b_BYTES", 4);
+                SizeFormats.Add("G_IM_SIZ_32b_TILE_BYTES", 2);
+                SizeFormats.Add("G_IM_SIZ_32b_LINE_BYTES", 2);
+
+                SizeFormats.Add("G_IM_SIZ_4b_LOAD_BLOCK", 2);
+                SizeFormats.Add("G_IM_SIZ_8b_LOAD_BLOCK", 2);
+                SizeFormats.Add("G_IM_SIZ_16b_LOAD_BLOCK", 2);
+                SizeFormats.Add("G_IM_SIZ_32b_LOAD_BLOCK", 3);
+
+                SizeFormats.Add("G_IM_SIZ_4b_SHIFT", 2);
+                SizeFormats.Add("G_IM_SIZ_8b_SHIFT", 1);
+                SizeFormats.Add("G_IM_SIZ_16b_SHIFT", 0);
+                SizeFormats.Add("G_IM_SIZ_32b_SHIFT", 0);
+
+                SizeFormats.Add("G_IM_SIZ_4b_INCR", 3);
+                SizeFormats.Add("G_IM_SIZ_8b_INCR", 1);
+                SizeFormats.Add("G_IM_SIZ_16b_INCR", 0);
+                SizeFormats.Add("G_IM_SIZ_32b_INCR", 0);
+                #endregion
+
                 ParseDL(MainFile, MainDLOffset, TexturePairs, Vertices, ref OutData);
 
                 byte[] buffer = BitConverter.GetBytes(CurDLOffset);
@@ -230,7 +277,7 @@ namespace BombermanObjectCompiler
             byte[] buf = new byte[1];
             while(buf[0] != 0xB8)
             {
-                buf = ParseLine(File, Line, Textures, Vertices);
+                buf = ParseLine(File, Line, Textures, Vertices, ref Model);
                 Line++;
                 if(buf[0] != 0x10)
                 {
@@ -242,7 +289,16 @@ namespace BombermanObjectCompiler
             Model.AddRange(OutData);
         }
 
-        public static byte[] ParseLine(string[] File, int Line, Dictionary<string, Tex> Textures, Dictionary<string, VTX> Vertices)
+        /// <summary>
+        /// Parses current DL line
+        /// </summary>
+        /// <param name="File">Full file</param>
+        /// <param name="Line">Current line</param>
+        /// <param name="Textures">Copy of all textures, for offsets</param>
+        /// <param name="Vertices">Copy of all vertices, for offsets</param>
+        /// <param name="Model">DO NOT USE TO EDIT MODEL FROM WITHIN FUNCTION. ONLY PASS FOR gsSPDisplayList</param>
+        /// <returns>Data to add to the outfile.</returns>
+        public static byte[] ParseLine(string[] File, int Line, Dictionary<string, Tex> Textures, Dictionary<string, VTX> Vertices, ref List<byte> Model)
         {
             List<byte> Outdata = new List<byte>();
 
@@ -345,6 +401,93 @@ namespace BombermanObjectCompiler
                     {
                         //haha fuck this for now
                         Outdata.AddRange(new byte[] { 0xFC, 0x12, 0x7E, 0x24, 0xFF, 0xFF, 0xF3, 0xF9 });
+                        break;
+                    }
+                case "gsSPTexture":
+                    {
+                        string[] Params = GetParams(File[Line]);
+                        ushort TTTT = ushort.Parse(Params[0]);
+                        ushort SSSS = ushort.Parse(Params[1]);
+                        byte NN = byte.Parse(Params[2]);
+
+                        byte LLL = byte.Parse(Params[3]);
+                        byte DDD = byte.Parse(Params[4]);
+
+                        Outdata.AddRange(new byte[] { 0xBB, 0x00 });
+                        byte XX = (byte)((LLL << 3) | DDD);
+                        Outdata.Add(XX);
+
+                        Outdata.Add(NN);
+
+                        byte[] buf = BitConverter.GetBytes(SSSS);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+
+                        buf = BitConverter.GetBytes(TTTT);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+
+                        break;
+                    }
+                case "gsSPDisplayList":
+                    {
+                        string obj = GetParams(File[Line])[0];
+                        obj = "Gfx " + obj + "[]";
+                        int LineToGive = FindResourceLine(File, obj);
+                        LineToGive++;
+
+                        ParseDL(File, LineToGive, Textures, Vertices, ref Model);
+                        Outdata.Add(0x06);
+                        Outdata.Add(0x00);
+                        Outdata.Add(0x00);
+                        Outdata.Add(0x00);
+
+                        int BufOffset = CurDLOffset + 0x02000000;
+                        byte[] buf = BitConverter.GetBytes(BufOffset);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+
+                        break;
+                    }
+                case "gsDPSetTextureImage":
+                    {
+                        //oh deary me, I feel like the W param is just poof here
+                        string[] Params = GetParams(File[Line]);
+                        byte BFormat = ImageFormats[Params[0].Trim()];
+                        byte SFormat = SizeFormats[Params[1].Trim()];
+
+                        byte XX = (byte)((BFormat << 5) | (SFormat << 3));
+
+                        int SegAddr = 0x02000000;
+                        int AddrToFind = (int)Textures["u64" + Params[3]].TexOffset;
+                        SegAddr += AddrToFind;
+
+                        Outdata.Add(0xFD);
+                        Outdata.Add(XX);
+                        Outdata.Add(0x00);
+                        Outdata.Add(0x00);
+
+                        byte[] buf = BitConverter.GetBytes(SegAddr);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+
+                        break;
+                    }
+                case "gsDPTileSync":
+                    {
+                        Outdata.AddRange(new byte[] { 0xE8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
                         break;
                     }
                 default:

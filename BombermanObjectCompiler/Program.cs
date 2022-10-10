@@ -46,6 +46,12 @@ namespace BombermanObjectCompiler
             public byte[] Data;
         }
 
+        public struct DLPairs
+        {
+            public int VTXline;
+            public int MatLine;
+        }
+
         public static int MainDLOffset;
         public static int CurDLOffset;
         public static Dictionary<string, byte> ImageFormats = new Dictionary<string, byte>();
@@ -55,6 +61,20 @@ namespace BombermanObjectCompiler
         public static Dictionary<string, byte> CombinerValues = new Dictionary<string, byte>();
         public static Dictionary<string, byte> CombinerValuesAlpha = new Dictionary<string, byte>();
 
+        public static List<string> PreDLAdditions = new List<string>();
+
+        public static string[] PostDLAdditions =
+        {
+            "gsDPPipeSync(),",
+            "gsSPSetGeometryMode(G_LIGHTING),",
+            "gsSPClearGeometryMode(G_TEXTURE_GEN),",
+            "gsDPSetCombineLERP(0, 0, 0, SHADE, 0, 0, 0, ENVIRONMENT, 0, 0, 0, SHADE, 0, 0, 0, ENVIRONMENT),",
+            "gsSPTexture(65535, 65535, 0, 0, 0),",
+            "gsSPEndDisplayList(),"
+        };
+
+        public static int Test = 0;
+
         static void Main(string[] args)
         {
             if(args.Length < 1)
@@ -63,7 +83,7 @@ namespace BombermanObjectCompiler
                 Environment.Exit(1);
             }
 
-            Console.WriteLine("Compiling...");
+            Console.WriteLine($"Compiling {args[0]}.model.inc.c ...");
             try
             {
                 List<string> Header = new List<string>(File.ReadAllLines((args[0] + "\\header.h")));
@@ -81,6 +101,8 @@ namespace BombermanObjectCompiler
                 Dictionary<string, VTX> Vertices = new Dictionary<string, VTX>();
                 List<byte> OutData = new List<byte>();
                 int Index = 0;
+                int DLCount = 0;
+                List<string> InlineToOutlineFuncs = new List<string>();
 
                 foreach (string line in Header)
                 {
@@ -106,11 +128,11 @@ namespace BombermanObjectCompiler
                                 List<string> tmpBuf = new List<string>();
                                 //find end of DL so we can copy
                                 int DLEnd = 0;
-                                for(int i = MainDLOffset; i < MainFile.Count; i++)
+                                for (int i = MainDLOffset; i < MainFile.Count; i++)
                                 {
-                                    if(GetCommand(MainFile[i]) == "gsSPEndDisplayList")
+                                    if (GetCommand(MainFile[i]) == "gsSPEndDisplayList")
                                     {
-                                        DLEnd = i+1;
+                                        DLEnd = i + 1;
                                         break;
                                     }
                                 }
@@ -121,34 +143,35 @@ namespace BombermanObjectCompiler
                                 List<Vector2> VTXLocs = new List<Vector2>();
                                 int VTXAmm = 0;
                                 int RelativeDLEnd = 0;
-                                for(int i = 0; i < tmpBuf.Count; i++)
-                                {                                    
-                                    if(GetCommand(tmpBuf[i]) == "gsSPVertex")
+                                for (int i = 0; i < tmpBuf.Count; i++)
+                                {
+                                    if (GetCommand(tmpBuf[i]) == "gsSPVertex" && GetCommand(tmpBuf[i + 1]) == "gsSP2Triangles")
                                     {
                                         Vector2 v = new Vector2();
                                         v.X = i;
                                         VTXLocs.Add(v);
                                         VTXAmm++;
+                                        DLCount++;
                                     }
-                                    if(GetCommand(tmpBuf[i]) == "gsSPEndDisplayList")
+                                    if (GetCommand(tmpBuf[i]) == "gsSPEndDisplayList")
                                     {
                                         RelativeDLEnd = i;
                                     }
                                 }
-                                if(VTXAmm <= 1)
+                                if (VTXAmm <= 1)
                                 {
-                                    Console.WriteLine("No need to split...");
+                                    Console.WriteLine("No need to split...");                                    
                                     break;
                                 } //check if splitting is needed                                
 
                                 //iterate through all items
-                                for(int i = 0; i < VTXLocs.Count; i++)
+                                for (int i = 0; i < VTXLocs.Count; i++)
                                 {
-                                    OverWriteBuf.Add($"{TrimExcess(line).Replace("mesh","splitmesh")}_split_{i}[] = " + '{');
-                                    if(i != VTXLocs.Count - 1)
+                                    OverWriteBuf.Add($"{TrimExcess(line).Replace("mesh", "splitmesh")}_split_{i}[] = " + '{');
+                                    if (i != VTXLocs.Count - 1)
                                     {
                                         OverWriteBuf.AddRange(tmpBuf.GetRange((int)VTXLocs[i].X, (int)VTXLocs[i + 1].X - 1 - (int)VTXLocs[i].X));
-                                    }         
+                                    }
                                     else
                                     {
                                         OverWriteBuf.AddRange(tmpBuf.GetRange((int)VTXLocs[i].X, RelativeDLEnd - 1 - (int)VTXLocs[i].X));
@@ -159,38 +182,111 @@ namespace BombermanObjectCompiler
                                 }
 
                                 Console.WriteLine($"Split GFX line into {VTXAmm} separate DLs");
+                                //DLCount += VTXAmm;
+                                /*
                                 OverWriteBuf.Add(TrimExcess(line) + "[] = " + '{');
-                                for(int i = 0; i < VTXAmm; i++)
+                                for (int i = 0; i < VTXAmm; i++)
                                 {
-                                    OverWriteBuf.Add($"gsSPDisplayList({TrimExcess(line).Replace("mesh", "splitmesh").Replace("Gfx ","")}_split_{i}),");
+                                    OverWriteBuf.Add($"gsSPDisplayList({TrimExcess(line).Replace("mesh", "splitmesh").Replace("Gfx ", "")}_split_{i}),");
                                 }
                                 OverWriteBuf.Add("gsSPEndDisplayList(),");
-                                OverWriteBuf.Add("};");
+                                OverWriteBuf.Add("};");*/
 
                                 //now take out the original function and replace it with my new one
-                                MainFile.RemoveRange(MainDLOffset - 1, DLEnd - MainDLOffset + 2);
+                                MainFile.RemoveRange(MainDLOffset - 1, DLEnd - MainDLOffset + 2); //remove for memory management
                                 MainFile.InsertRange(MainDLOffset, OverWriteBuf);
+                                InlineToOutlineFuncs.AddRange(OverWriteBuf);
+
+                                //remove original call to display list
+                                int OverwriteLine = FindResourceLine(MainFile, $"gsSPDisplayList({TrimExcess(line).Replace("Gfx ", "")})");
+                                string MatCall = MainFile[OverwriteLine - 1];
+                                //generate new display list calls :)
+                                OverWriteBuf.Clear();
+
+                                //OverWriteBuf.Add(TrimExcess(line) + "[] = " + '{');
+                                for (int i = 0; i < VTXAmm; i++)
+                                {
+                                    if(i != 0)
+                                    {
+                                        OverWriteBuf.Add(MatCall);
+                                    }
+                                    OverWriteBuf.Add($"gsSPDisplayList({TrimExcess(line).Replace("mesh", "splitmesh").Replace("Gfx ", "")}_split_{i}),");
+                                }
+                                //OverWriteBuf.Add("gsSPEndDisplayList(),");
+                                //OverWriteBuf.Add("};");
+
+                                MainFile.RemoveAt(OverwriteLine);
+                                MainFile.InsertRange(OverwriteLine, OverWriteBuf);
 
                                 break;
                             }
                     }
                     Index++;
                 }
-                
+
+                int PreDLLoc = 0;
+                foreach (string s in MainFile)
+                {
+                    if (s.Contains("gsSPCullDisplayList("))
+                    {
+                        break;
+                    }
+                    PreDLLoc++;
+                }
+
+                for (int i = PreDLLoc; i > 0; i--)
+                {
+                    if (MainFile[i].Contains("Gfx"))
+                    {
+                        break; //stop
+                    }
+                    PreDLAdditions.Insert(0, MainFile[i]);
+
+#if DEBUG
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("Adding line to pre DL: " + MainFile[i]);
+                    Console.ForegroundColor = ConsoleColor.White;
+#endif
+                }
+
+                PreDLAdditions.Add("gsSPEndDisplayList(),");
+
                 MainDLOffset = FindResourceLine(MainFile, "Gfx " +TrimExcess(Header[Header.Count() - 1].Split(' ')[2]) + "[] =");
                 MainDLOffset++;
 
                 Console.WriteLine("Textures & Vertices parsed...");
 
                 OutData.AddRange(new byte[] { 0x36, 0x34, 0x00, 0x38 });
-                OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x01 }); //1 length DL for now
+                byte[] TmpBuf = BitConverter.GetBytes(DLCount);
+                if (BitConverter.IsLittleEndian)
+                {
+                    Array.Reverse(TmpBuf);
+                }
+                OutData.AddRange(TmpBuf);
+#if DEBUG
+                Console.ForegroundColor = ConsoleColor.Blue;
+                Console.WriteLine($"Found {DLCount} display lists...");
+                Console.ForegroundColor = ConsoleColor.White;
+#endif
+                //OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x01 }); //1 length DL for now
                 OutData.AddRange(new byte[] { 0x02, 0x02, 0x02, 0x02 });
 
-                OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
-                OutData.AddRange(new byte[] { 0x3F, 0x80, 0x00, 0x00 });
-                OutData.AddRange(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF }); // replace this at the end
+                //OutData.AddRange(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF }); // replace this at the end, add index slots
 
-                for(int i = 0; i < TexturePairs.Count; i++)
+                int PairIndex = 0;
+                for (int i = 0; i < DLCount; i++)
+                {
+                    OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    OutData.AddRange(new byte[] { 0x3F, 0x80, 0x00, 0x00 });
+                    OutData.AddRange(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF });
+#if DEBUG
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Adding dummy DL {i}...");
+                    Console.ForegroundColor = ConsoleColor.White;
+#endif
+                }
+
+                for (int i = 0; i < TexturePairs.Count; i++)
                 {
                     Tex tex = TexturePairs.ElementAt(i).Value;
                     tex.TexOffset = (ulong)OutData.Count;
@@ -460,22 +556,69 @@ namespace BombermanObjectCompiler
 
                 #endregion
 
-                File.WriteAllLines(args[0] + "\\tmp.c", MainFile.ToArray());
-                ParseDL(MainFile, MainDLOffset, TexturePairs, Vertices, ref OutData);
+                //File.WriteAllLines(args[0] + "\\tmp.c", MainFile.ToArray());
+                List<DLPairs> Pairs = new List<DLPairs>();
 
+                ParseDL(MainFile, MainDLOffset, TexturePairs, Vertices, ref OutData, ref Pairs, false);
+
+                /*
                 byte[] buffer = BitConverter.GetBytes(CurDLOffset);
                 if(BitConverter.IsLittleEndian)
                 {
                     Array.Reverse(buffer);
                 }
-                OutData[0x14] = buffer[0];
+                OutData[0x14] = buffer[0]; 
                 OutData[0x15] = buffer[1];
                 OutData[0x16] = buffer[2];
-                OutData[0x17] = buffer[3];
+                OutData[0x17] = buffer[3]; 
+                */
+
+                PairIndex = 0;
+
+                foreach (DLPairs Pair in Pairs)
+                {
+                    //now parse all of these individually and add them properly into the header
+                    //0x14 is the offset for the first header
+                    List<byte> buf = new List<byte>();
+
+                    List<DLPairs> L = null;
+                    if(PairIndex == 0)
+                    {
+                        ParseDL(PreDLAdditions, 0, TexturePairs, Vertices, ref buf, ref L, true);
+                    }                    
+                    ParseDL(MainFile, Pair.MatLine + 1, TexturePairs, Vertices, ref buf, ref L, true);
+                    ParseDL(MainFile, Pair.VTXline + 1, TexturePairs, Vertices, ref buf, ref L, false);
+                    //ParseDL(new List<string>(PostDLAdditions), 0, TexturePairs, Vertices, ref buf, ref L, false);
+#if DEBUG
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine("DL successfully parsed...");
+                    Console.ForegroundColor = ConsoleColor.White;
+#endif
+
+                    //dl parsed, now add it to the end result AND replace the offset
+                    int OverwriteIndex = (0x14 + ((0x4 * 3) * PairIndex));
+#if DEBUG
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Header index: {OverwriteIndex.ToString("X")}...");
+                    Console.WriteLine($"Pair index: {PairIndex+1}...");
+                    Console.ForegroundColor = ConsoleColor.White;
+#endif
+                    OutData.RemoveRange(OverwriteIndex, 4); //remove buffer offset
+                    byte[] buffer = BitConverter.GetBytes(OutData.Count + 0x4);
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        Array.Reverse(buffer);
+                    }
+                    OutData.InsertRange(OverwriteIndex, buffer); //add in the offset
+                    OutData.AddRange(buf);
+                    PairIndex++;
+                }
 
                 File.WriteAllBytes(args[0] + "\\outmodel.bin", OutData.ToArray());
 
                 Console.WriteLine("File written to " + args[0] + "\\outmodel.bin");
+                Console.WriteLine("Filesize: " + OutData.Count / 1024 + "kb");
+                File.WriteAllLines(args[0] + "\\tmp.c", MainFile.ToArray());
                 Console.WriteLine("Done!");
             }
             catch(Exception ex)
@@ -483,23 +626,26 @@ namespace BombermanObjectCompiler
                 Console.WriteLine(ex.ToString()); 
             }
         }
-  
-        public static void ParseDL(List<string> File, int Line, Dictionary<string, Tex> Textures, Dictionary<string, VTX> Vertices, ref List<byte> Model)
+
+        public static void ParseDL(List<string> File, int Line, Dictionary<string, Tex> Textures, Dictionary<string, VTX> Vertices, ref List<byte> Model, ref List<DLPairs>? Pairs, bool IgnoreDLEnd)
         {
             List<byte> OutData = new List<byte>();
             byte[] buf = new byte[1];
-            while(buf[0] != 0xB8)
+            while (buf[0] != 0xB8 && buf[0] != 0x11)
             {
-                buf = ParseLine(File, Line, Textures, Vertices, ref Model);
+                buf = ParseLine(File, Line, Textures, Vertices, ref Model, ref Pairs, IgnoreDLEnd);
                 Line++;
-                if(buf[0] != 0x10)
+                if (buf[0] != 0x10 && buf[0] != 0x11) //ignore 0x10, 0x11 stops parsing
                 {
                     OutData.AddRange(buf);
-                }                
+                }
             }
             CurDLOffset = Model.Count;
 
-            Model.AddRange(OutData);
+            if(Pairs == null)
+            {
+                Model.AddRange(OutData); //only add if we aren't looking for pairs ladies :)
+            }            
         }
 
         /// <summary>
@@ -511,7 +657,7 @@ namespace BombermanObjectCompiler
         /// <param name="Vertices">Copy of all vertices, for offsets</param>
         /// <param name="Model">DO NOT USE TO EDIT MODEL FROM WITHIN FUNCTION. ONLY PASS FOR gsSPDisplayList</param>
         /// <returns>Data to add to the outfile.</returns>
-        public static byte[] ParseLine(List<string> File, int Line, Dictionary<string, Tex> Textures, Dictionary<string, VTX> Vertices, ref List<byte> Model)
+        public static byte[] ParseLine(List<string> File, int Line, Dictionary<string, Tex> Textures, Dictionary<string, VTX> Vertices, ref List<byte> Model, ref List<DLPairs> Pairs, bool IgnoreDLEnd)
         {
             List<byte> Outdata = new List<byte>();
 
@@ -564,7 +710,15 @@ namespace BombermanObjectCompiler
                     }
                 case "gsSPEndDisplayList":
                     {
-                        Outdata.AddRange(new byte[] { 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
+                        if(!IgnoreDLEnd)
+                        {
+                            Outdata.AddRange(new byte[] { 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
+                        }
+                        else
+                        {
+                            Outdata.Add(0x11);
+                        }
+                        
                         break;
                     }
                 case "gsSPCullDisplayList":
@@ -613,9 +767,13 @@ namespace BombermanObjectCompiler
                 case "gsDPSetCombineLERP":
                     {
                         //haha fuck this for now
+                        //Outdata.AddRange(new byte[] { 0xFC, 0x12, 0x7E, 0x24, 0xFF, 0xFF, 0xF3, 0xF9 });
+                        //FCFFFFFFFFFE793E 
+                        //FCFFFFFFFFFE7D3E
+                        //FCFFFFFFFFFE7B3D
+                        //Outdata.AddRange(new byte[] { 0xFC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0x7D, 0x3D });
+                        //FC127E24FFFFF3F9
                         Outdata.AddRange(new byte[] { 0xFC, 0x12, 0x7E, 0x24, 0xFF, 0xFF, 0xF3, 0xF9 });
-                        //FCFFFFFFFFFE793E
-                        //Outdata.AddRange(new byte[] { 0xFC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0x79, 0x3E });
 
                         /*
                         UInt64 MyData = 0xFC00000000000000;
@@ -695,8 +853,9 @@ namespace BombermanObjectCompiler
 
                         break;
                     }
-                case "gsSPDisplayList":
+                case "gsSPDisplayList": //remove this one, no functions! just make this bad boy make tri-material combos
                     {
+                        /*
                         string obj = GetParams(File[Line])[0];
                         obj = "Gfx " + obj + "[]";
                         int LineToGive = FindResourceLine(File, obj);
@@ -714,7 +873,38 @@ namespace BombermanObjectCompiler
                         {
                             Array.Reverse(buf);
                         }
-                        Outdata.AddRange(buf);
+                        Outdata.AddRange(buf);*/
+
+                        if(Pairs != null) //important because we'll be passing null later on
+                        {
+                            string param = GetParams(File[Line])[0];
+                            if (param.Contains("tri_"))
+                            {
+                                DLPairs pair = new DLPairs();
+                                pair.VTXline = FindResourceLine(File, "Gfx " + param + "[]");
+                                pair.MatLine = FindResourceLine(File, "Gfx " + GetParams(File[Line - 1])[0] + "[]");
+
+                                Pairs.Add(pair);
+
+#if DEBUG
+                                Console.ForegroundColor = ConsoleColor.Green;
+
+                                Console.Write("Material line: ");
+
+                                Console.ForegroundColor = ConsoleColor.DarkBlue;
+                                Console.Write(pair.MatLine);
+                                Console.Write("\n");
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.Write("VTX line: ");
+                                Console.ForegroundColor = ConsoleColor.DarkBlue;
+                                Console.Write(pair.VTXline);
+                                Console.Write("\n");
+
+                                Console.ForegroundColor = ConsoleColor.White;
+#endif
+                            }
+                            Outdata.Add(0x10);
+                        }
 
                         break;
                     }
@@ -855,7 +1045,7 @@ namespace BombermanObjectCompiler
                         OutBuf |= (UInt64)Dat << 32;
                         Dat = ushort.Parse(Params[3]);
                         OutBuf |= (UInt64)Dat << 12;
-                        Dat = ushort.Parse(Params[3]);
+                        Dat = ushort.Parse(Params[4]);
                         OutBuf |= (UInt64)Dat;
 
                         byte[] buf = BitConverter.GetBytes(OutBuf);
@@ -911,6 +1101,26 @@ namespace BombermanObjectCompiler
                         Outdata.AddRange(buf);
                         break;
                     }
+                case "gsSP1Triangle":
+                    {
+                        UInt64 OutBuf = 0xBF00000000000000;
+                        string[] Params = GetParams(File[Line]);
+
+                        for (int i = 0; i < Params.Length - 1; i++)
+                        {
+                            byte dat = byte.Parse(Params[i]);
+                            OutBuf |= ((UInt64)dat << 8 * (Params.Length - 2 - i)) * 2;
+                        }
+
+                        byte[] buf = BitConverter.GetBytes(OutBuf);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+
+                        break;
+                    }
                 case "gsSPSetOtherMode":
                     {
                         string[] Params = GetParams(File[Line]);
@@ -961,13 +1171,51 @@ namespace BombermanObjectCompiler
                         Outdata.AddRange(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0 }); //debug command
                         break;
                     }
+                case "G_RDPFULLSYNC":
+                    {
+                        Outdata.AddRange(new byte[] { 0xE9, 0, 0, 0, 0, 0, 0, 0 });
+                        break;
+                    }
                 default:
                     {
-                        Console.WriteLine("Unknown command: " + File[Line]);
                         Outdata.Add(0x10);
                         break;
                     }
             }
+
+#if DEBUG
+            Console.ForegroundColor = ConsoleColor.Blue;
+            Console.Write("Parsed line ");
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.Write(File[Line]);
+            Console.ForegroundColor = ConsoleColor.Blue;            
+            if(Outdata[0] == 0x10)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write(" - unknown command");
+            }
+            else if(Outdata[0] == 0x11)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write(" - ENDDL command ignored");
+            }
+            else
+            {
+                Console.Write(" - outdata added: 0x");
+                foreach (byte b in Outdata)
+                { 
+                    Console.Write("{0:X2}", b);
+                }
+            }
+
+            if(Pairs != null)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write(" - PARAMS NOT SET");
+            }
+            Console.Write("\n");
+            Console.ForegroundColor = ConsoleColor.White;
+#endif
 
             return Outdata.ToArray();
         }
@@ -996,14 +1244,30 @@ namespace BombermanObjectCompiler
             {
                 //going through function array thing
                 string buf = File[FileLine].Trim();
-                string[] Items = buf.Split(",");
-                for(int i = 0; i < Items.Length - 1; i++)
+                if(buf.Contains(','))
                 {
-                    string Clean = Items[i].Replace("0x", "").Trim();
-                    UInt64 CurVal = Convert.ToUInt64(Clean, 16);
-                    //Console.WriteLine(CurVal);
-                    Values.Add(CurVal);
+                    string[] Items = buf.Split(",");
+
+                    for (int i = 0; i < Items.Length - 1; i++)
+                    {
+                        string Clean = Items[i].Replace("0x", "").Trim();
+                        UInt64 CurVal = Convert.ToUInt64(Clean, 16);
+                        //Console.WriteLine(CurVal);
+                        Values.Add(CurVal);
+                    }
                 }
+                else
+                {
+                    if(buf != "")
+                    {
+                        string Clean = buf.Replace("0x", "").Trim();
+                        UInt64 CurVal = Convert.ToUInt64(Clean, 16);
+                        //Console.WriteLine(CurVal);
+                        Values.Add(CurVal);
+                    }
+                }
+
+
                 FileLine++;
             }
 

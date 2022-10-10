@@ -50,6 +50,9 @@ namespace BombermanObjectCompiler
         {
             public int VTXline;
             public int MatLine;
+            public List<VTX_Item> Myvertices;
+            public List<int> VTXCommands;
+            public bool IsEmpty;
         }
 
         public static int MainDLOffset;
@@ -115,7 +118,7 @@ namespace BombermanObjectCompiler
                             }
                         case "Vtx":
                             {
-                                ParseVTX(MainFile, line, ref Vertices);
+                                //ParseVTX(MainFile, line, ref Vertices);
                                 break;
                             }
                         case "Gfx":
@@ -305,6 +308,7 @@ namespace BombermanObjectCompiler
 
                 Console.WriteLine("Texture Data parsed");
 
+                /*
                 for (int i = 0; i < Vertices.Count; i++)
                 {
                     VTX vtx = Vertices.ElementAt(i).Value;
@@ -374,6 +378,8 @@ namespace BombermanObjectCompiler
                 }
 
                 Console.WriteLine("Vertex Data parsed");
+                */
+
 
                 #region DEFINES
                 ImageFormats.Add("G_IM_FMT_RGBA", 0);
@@ -558,20 +564,10 @@ namespace BombermanObjectCompiler
 
                 //File.WriteAllLines(args[0] + "\\tmp.c", MainFile.ToArray());
                 List<DLPairs> Pairs = new List<DLPairs>();
+                DLPairs p = new DLPairs();
+                p.IsEmpty = true;
 
-                ParseDL(MainFile, MainDLOffset, TexturePairs, Vertices, ref OutData, ref Pairs, false);
-
-                /*
-                byte[] buffer = BitConverter.GetBytes(CurDLOffset);
-                if(BitConverter.IsLittleEndian)
-                {
-                    Array.Reverse(buffer);
-                }
-                OutData[0x14] = buffer[0]; 
-                OutData[0x15] = buffer[1];
-                OutData[0x16] = buffer[2];
-                OutData[0x17] = buffer[3]; 
-                */
+                ParseDL(MainFile, MainDLOffset, TexturePairs, Vertices, ref OutData, ref Pairs, false, ref p);
 
                 PairIndex = 0;
 
@@ -580,14 +576,97 @@ namespace BombermanObjectCompiler
                     //now parse all of these individually and add them properly into the header
                     //0x14 is the offset for the first header
                     List<byte> buf = new List<byte>();
+                    p = Pair;
+                    p.IsEmpty = false;
 
                     List<DLPairs> L = null;
                     if(PairIndex == 0)
                     {
-                        ParseDL(PreDLAdditions, 0, TexturePairs, Vertices, ref buf, ref L, true);
-                    }                    
-                    ParseDL(MainFile, Pair.MatLine + 1, TexturePairs, Vertices, ref buf, ref L, true);
-                    ParseDL(MainFile, Pair.VTXline + 1, TexturePairs, Vertices, ref buf, ref L, false);
+                        //ParseDL(PreDLAdditions, 0, TexturePairs, Vertices, ref buf, ref L, true);
+                    }
+
+                    int VTXStart = 0;
+                    int relstart = 0;
+
+                    ParseDL(MainFile, Pair.MatLine + 1, TexturePairs, Vertices, ref buf, ref L, true, ref p);
+                    VTXStart = OutData.Count + buf.Count;
+                    relstart = buf.Count;
+                    ParseDL(MainFile, Pair.VTXline + 1, TexturePairs, Vertices, ref buf, ref L, false, ref p);
+                    //vertex data should be loaded in by now :)
+
+                    byte[] a = BitConverter.GetBytes(OutData.Count + buf.Count);
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        Array.Reverse(a);
+                    }
+                    buf[relstart + 5] = a[1];
+                    buf[relstart + 1 + 5] = a[2];
+                    buf[relstart + 2 + 5] = a[3];
+
+                    foreach (VTX_Item item in Pair.Myvertices)
+                    {
+                        short X = (short)item.Pos.X;
+                        short Y = (short)item.Pos.Y;
+                        short Z = (short)item.Pos.Z;
+                        ushort flag = (ushort)item.flag;
+                        short TX = (short)item.Coords.X;
+                        short TY = (short)item.Coords.Y;
+                        byte R = (byte)item.Colours.X;
+                        byte G = (byte)item.Colours.Y;
+                        byte B = (byte)item.Colours.Z;
+                        byte A = (byte)item.Colours.W;
+
+                        byte[] nuf = BitConverter.GetBytes(X);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        OutData.AddRange(buf);
+
+                        nuf = BitConverter.GetBytes(Y);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        OutData.AddRange(nuf);
+
+                        nuf = BitConverter.GetBytes(Z);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        OutData.AddRange(nuf);
+
+                        nuf = BitConverter.GetBytes(flag);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        OutData.AddRange(nuf);
+
+                        nuf = BitConverter.GetBytes(TX);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        OutData.AddRange(nuf);
+
+                        nuf = BitConverter.GetBytes(TY);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        OutData.AddRange(nuf);
+
+                        OutData.Add(R);
+                        OutData.Add(G);
+                        OutData.Add(B);
+                        OutData.Add(A);
+                    }
+
+
+                    //
+
                     //ParseDL(new List<string>(PostDLAdditions), 0, TexturePairs, Vertices, ref buf, ref L, false);
 #if DEBUG
                     Console.ForegroundColor = ConsoleColor.Cyan;
@@ -627,13 +706,13 @@ namespace BombermanObjectCompiler
             }
         }
 
-        public static void ParseDL(List<string> File, int Line, Dictionary<string, Tex> Textures, Dictionary<string, VTX> Vertices, ref List<byte> Model, ref List<DLPairs>? Pairs, bool IgnoreDLEnd)
+        public static void ParseDL(List<string> File, int Line, Dictionary<string, Tex> Textures, Dictionary<string, VTX> Vertices, ref List<byte> Model, ref List<DLPairs>? Pairs, bool IgnoreDLEnd, ref DLPairs CurPair)
         {
             List<byte> OutData = new List<byte>();
             byte[] buf = new byte[1];
             while (buf[0] != 0xB8 && buf[0] != 0x11)
             {
-                buf = ParseLine(File, Line, Textures, Vertices, ref Model, ref Pairs, IgnoreDLEnd);
+                buf = ParseLine(File, Line, Textures, Vertices, ref Model, ref Pairs, IgnoreDLEnd, ref CurPair);
                 Line++;
                 if (buf[0] != 0x10 && buf[0] != 0x11) //ignore 0x10, 0x11 stops parsing
                 {
@@ -657,7 +736,7 @@ namespace BombermanObjectCompiler
         /// <param name="Vertices">Copy of all vertices, for offsets</param>
         /// <param name="Model">DO NOT USE TO EDIT MODEL FROM WITHIN FUNCTION. ONLY PASS FOR gsSPDisplayList</param>
         /// <returns>Data to add to the outfile.</returns>
-        public static byte[] ParseLine(List<string> File, int Line, Dictionary<string, Tex> Textures, Dictionary<string, VTX> Vertices, ref List<byte> Model, ref List<DLPairs> Pairs, bool IgnoreDLEnd)
+        public static byte[] ParseLine(List<string> File, int Line, Dictionary<string, Tex> Textures, Dictionary<string, VTX> Vertices, ref List<byte> Model, ref List<DLPairs> Pairs, bool IgnoreDLEnd, ref DLPairs CurPair)
         {
             List<byte> Outdata = new List<byte>();
 
@@ -676,12 +755,13 @@ namespace BombermanObjectCompiler
                     }
                 case "gsSPVertex":
                     {
+                        
                         string[] Params = GetParams(File[Line]);
 
-                        UInt32 VTXLine = (UInt32)Vertices["Vtx " + Params[0].Split('+')[0].Trim()].VertexOffset;
-                        VTXLine += UInt32.Parse(Params[0].Split('+')[1].Trim()); //SS values, load in bank 02
+                        //UInt32 VTXLine = (UInt32)Vertices["Vtx " + Params[0].Split('+')[0].Trim()].VertexOffset;
+                        //VTXLine += UInt32.Parse(Params[0].Split('+')[1].Trim()); //SS values, load in bank 02
 
-                        VTXLine += 0x02000000; //set bank
+                        UInt32 VTXLine = 0x02000000; //set bank
                         byte N = byte.Parse(Params[1]);
                         byte II = byte.Parse(Params[2]);
 
@@ -705,6 +785,31 @@ namespace BombermanObjectCompiler
                             Array.Reverse(buf);
                         }
                         Outdata.AddRange(buf);
+                        
+
+                        if(!CurPair.IsEmpty)
+                        {
+                            int RL = FindResourceLine(File, "Vtx " + Params[0].Split('+')[0].Trim()) + 1 + int.Parse(Params[0].Split('+')[1].Trim());
+
+                            List<VTX_Item> suf = new List<VTX_Item>();
+
+                            for(int i = 0; i < N; i++)
+                            {
+                                string duf = File[RL + i].Replace("{", "").Trim();
+                                duf = duf.Replace("}", "");
+                                string[] data = duf.Split(',');
+
+
+                                VTX_Item Cur = new VTX_Item();
+                                Cur.Pos = new Vector3(short.Parse(data[0]), short.Parse(data[1]), short.Parse(data[2]));
+                                Cur.flag = ushort.Parse(data[3]);
+                                Cur.Coords = new Vector2(short.Parse(data[4]), short.Parse(data[5]));
+                                //Cur.Colours = new Vector4(Convert.ToInt32(data[6].Replace("0x","").Trim(),16), Convert.ToInt32(data[7].Replace("0x", "").Trim(), 16), Convert.ToInt32(data[8].Replace("0x", "").Trim(), 16), Convert.ToInt32(data[9].Replace("0x", "").Trim(), 16));
+                                Cur.Colours = new Vector4(0x00, 0x7F, 0x00, 0xFF);
+
+                                suf.Add(Cur);
+                            }
+                        }
 
                         break;
                     }
@@ -765,17 +870,7 @@ namespace BombermanObjectCompiler
                         break;
                     }
                 case "gsDPSetCombineLERP":
-                    {
-                        //haha fuck this for now
-                        //Outdata.AddRange(new byte[] { 0xFC, 0x12, 0x7E, 0x24, 0xFF, 0xFF, 0xF3, 0xF9 });
-                        //FCFFFFFFFFFE793E 
-                        //FCFFFFFFFFFE7D3E
-                        //FCFFFFFFFFFE7B3D
-                        //Outdata.AddRange(new byte[] { 0xFC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0x7D, 0x3D });
-                        //FC127E24FFFFF3F9
-                        Outdata.AddRange(new byte[] { 0xFC, 0x12, 0x7E, 0x24, 0xFF, 0xFF, 0xF3, 0xF9 });
-
-                        /*
+                    {                       
                         UInt64 MyData = 0xFC00000000000000;
                         byte buf = 0;
                         string[] Params = GetParams(File[Line]);
@@ -817,19 +912,19 @@ namespace BombermanObjectCompiler
                         {
                             Array.Reverse(wow);
                         }
-                        Outdata.AddRange(wow);*/
+                        Outdata.AddRange(wow);
 
                         break;
                     }
                 case "gsSPTexture":
                     {
                         string[] Params = GetParams(File[Line]);
-                        ushort TTTT = ushort.Parse(Params[0]);
-                        ushort SSSS = ushort.Parse(Params[1]);
-                        byte NN = byte.Parse(Params[2]);
+                        ushort TTTT = ushort.Parse(Params[1]);
+                        ushort SSSS = ushort.Parse(Params[0]);
+                        byte NN = byte.Parse(Params[4]);
 
-                        byte LLL = byte.Parse(Params[3]);
-                        byte DDD = byte.Parse(Params[4]);
+                        byte LLL = byte.Parse(Params[2]);
+                        byte DDD = byte.Parse(Params[3]);
 
                         Outdata.AddRange(new byte[] { 0xBB, 0x00 });
                         byte XX = (byte)((LLL << 3) | DDD);
@@ -884,6 +979,7 @@ namespace BombermanObjectCompiler
                                 pair.VTXline = FindResourceLine(File, "Gfx " + param + "[]");
                                 pair.MatLine = FindResourceLine(File, "Gfx " + GetParams(File[Line - 1])[0] + "[]");
 
+                                pair.Myvertices = new List<VTX_Item>();
                                 Pairs.Add(pair);
 
 #if DEBUG
@@ -916,6 +1012,7 @@ namespace BombermanObjectCompiler
                         byte SFormat = SizeFormats[Params[1].Trim()];
 
                         byte XX = (byte)((BFormat << 5) | (SFormat << 3));
+                        byte W = byte.Parse(Params[2].Trim());
 
                         int SegAddr = 2 << 24;
                         int AddrToFind = (int)Textures["u64" + Params[3]].TexOffset;
@@ -942,62 +1039,65 @@ namespace BombermanObjectCompiler
                     }
                 case "gsDPSetTile":
                     {
-                        //crikey
                         string[] Params = GetParams(File[Line]);
-                        UInt64 OutBuf = 0xF500000000000000;
+ 
+                        UInt64 OutBuf = 0xF5;
+                        OutBuf = OutBuf << 3;
+                        OutBuf |= ImageFormats[Params[0].Trim()];
 
-                        OutBuf |= (ulong)((ulong)ImageFormats[Params[0].Trim()] << 53);
-                        OutBuf |= (ulong)((ulong)SizeFormats[Params[1].Trim()] << 51);
-                        
-                        short BitValues = short.Parse(Params[2]);
-                        BitValues = (short)(BitValues & 0b0000000111111111);
-                        OutBuf |= (ulong)((ulong)BitValues << 41);
+                        OutBuf = OutBuf << 2;
+                        OutBuf |= SizeFormats[Params[1].Trim()];
 
-                        BitValues = short.Parse(Params[3]);
-                        BitValues = (short)(BitValues & 0b0000000111111111);
-                        OutBuf |= (ulong)((ulong)BitValues << 32);
+                        OutBuf = OutBuf << 1;
+                        OutBuf = OutBuf << 9;
 
-                        byte Descriptor = byte.Parse(Params[4]);
-                        Descriptor = (byte)(Descriptor & 0b00000111);
-                        OutBuf |= (ulong)((ulong)Descriptor << 24);
+                        ulong BitValues = ulong.Parse(Params[2]);
+                        BitValues = (ulong)(BitValues & 0b0000000111111111);
 
-                        Descriptor = byte.Parse(Params[5]);
-                        Descriptor = (byte)(Descriptor & 0b00001111);
-                        OutBuf |= (ulong)((ulong)Descriptor << 20);
+                        OutBuf |= (ulong)BitValues;
 
+                        BitValues = ulong.Parse(Params[3]);
+                        BitValues = (ulong)(BitValues & 0b0000000111111111);
+                        OutBuf = OutBuf << 9;
+                        OutBuf |= (ulong)BitValues;
+
+                        OutBuf = OutBuf << 5;
+
+                        OutBuf = OutBuf << 3;
+                        OutBuf |= byte.Parse(Params[4]);
+
+                        OutBuf = OutBuf << 4;
+                        OutBuf |= byte.Parse(Params[5]);
+
+                        OutBuf = OutBuf << 2;
                         string[] TextureModes = Params[6].Split('|');
-                        Descriptor = 0;
-                        foreach(string s in TextureModes)
+                        byte Descriptor = 0;
+                        foreach (string s in TextureModes)
                         {
                             Descriptor |= (byte)TextureMicrocodes[s.Trim()];
                         }
-                        Descriptor &= (byte)0b00000011;
-                        OutBuf |= (ulong)((ulong)Descriptor << 18);
+                        OutBuf |= Descriptor;
 
-                        Descriptor = byte.Parse(Params[7]);
-                        Descriptor = (byte)(Descriptor & 0b00001111);
-                        OutBuf |= (ulong)((ulong)Descriptor << 14);
+                        OutBuf = OutBuf << 4;
+                        OutBuf |= byte.Parse(Params[7]);
 
-                        Descriptor = byte.Parse(Params[8]);
-                        Descriptor = (byte)(Descriptor & 0b00001111);
-                        OutBuf |= (ulong)((ulong)Descriptor << 10);
+                        OutBuf = OutBuf << 4;
+                        OutBuf |= byte.Parse(Params[8]);
 
+                        OutBuf = OutBuf << 2;
                         TextureModes = Params[9].Split('|');
                         Descriptor = 0;
                         foreach (string s in TextureModes)
                         {
                             Descriptor |= (byte)TextureMicrocodes[s.Trim()];
                         }
-                        Descriptor &= (byte)0b00000011;
-                        OutBuf |= (ulong)((ulong)Descriptor << 8);
+                        OutBuf |= Descriptor;
 
-                        Descriptor = byte.Parse(Params[10]);
-                        Descriptor = (byte)(Descriptor & 0b00001111);
-                        OutBuf |= (ulong)((ulong)Descriptor << 4);
+                        OutBuf = OutBuf << 4;
+                        OutBuf |= byte.Parse(Params[10]);
 
-                        Descriptor = byte.Parse(Params[11]);
-                        Descriptor = (byte)(Descriptor & 0b00001111);
-                        OutBuf |= (ulong)((ulong)Descriptor);
+                        OutBuf = OutBuf << 4;
+                        OutBuf |= byte.Parse(Params[11]);
 
                         byte[] buf = BitConverter.GetBytes(OutBuf);
                         if (BitConverter.IsLittleEndian)
@@ -1020,7 +1120,7 @@ namespace BombermanObjectCompiler
                         byte Descriptor = byte.Parse(Params[0]);
                         OutBuf |= ((UInt64)Descriptor << 24);
 
-                        ushort ColourCount = ushort.Parse(Params[1]);
+                        ushort ColourCount = (ushort)((ushort.Parse(Params[1]) & 0x3FF) << 2);
                         OutBuf |= ((UInt64)Descriptor << 12);
 
                         byte[] buf = BitConverter.GetBytes(OutBuf);

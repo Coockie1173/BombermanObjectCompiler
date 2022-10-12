@@ -260,6 +260,7 @@ namespace BombermanObjectCompiler
                 Console.WriteLine("Textures & Vertices parsed...");
 
                 OutData.AddRange(new byte[] { 0x36, 0x34, 0x00, 0x38 });
+
                 byte[] TmpBuf = BitConverter.GetBytes(DLCount);
                 if (BitConverter.IsLittleEndian)
                 {
@@ -277,16 +278,50 @@ namespace BombermanObjectCompiler
                 //OutData.AddRange(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF }); // replace this at the end, add index slots
 
                 int PairIndex = 0;
-                for (int i = 0; i < DLCount; i++)
+                for (int i = 0; i < DLCount + 2; i++)
                 {
-                    OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
-                    OutData.AddRange(new byte[] { 0x3F, 0x80, 0x00, 0x00 });
-                    OutData.AddRange(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF });
+                    if(i == DLCount)
+                    { //set up "bones" command
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x01 });
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                        OutData.AddRange(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF });
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x04 });
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    }
+                    else if(i == DLCount + 1)
+                    {
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x07 });
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x04 });
+                        OutData.AddRange(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF });
+
 #if DEBUG
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"Adding dummy DL {i}...");
-                    Console.ForegroundColor = ConsoleColor.White;
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"Current Length%0x10: 0x{(OutData.Count % 0x10).ToString("X")}...");
+                        Console.ForegroundColor = ConsoleColor.White;
 #endif
+
+                        while (OutData.Count % 0x10 != 0)
+                        {
+                            OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                        }                        
+#if DEBUG
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"Adding end DL {i}...");
+                        Console.ForegroundColor = ConsoleColor.White;
+#endif
+                    }
+                    else
+                    {
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                        OutData.AddRange(new byte[] { 0x3F, 0x80, 0x00, 0x00 });
+                        OutData.AddRange(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF });
+#if DEBUG
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"Adding dummy DL {i}...");
+                        Console.ForegroundColor = ConsoleColor.White;
+#endif
+                    }
                 }
 
                 for (int i = 0; i < TexturePairs.Count; i++)
@@ -307,79 +342,6 @@ namespace BombermanObjectCompiler
                 }
 
                 Console.WriteLine("Texture Data parsed");
-
-                /*
-                for (int i = 0; i < Vertices.Count; i++)
-                {
-                    VTX vtx = Vertices.ElementAt(i).Value;
-                    vtx.VertexOffset = (ulong)OutData.Count;
-                    Vertices[vtx.Identifier] = vtx;
-
-                    foreach(VTX_Item item in vtx.Vertex)
-                    {
-                        short X = (short)item.Pos.X;
-                        short Y = (short)item.Pos.Y;
-                        short Z = (short)item.Pos.Z;
-                        ushort flag = (ushort)item.flag;
-                        short TX = (short)item.Coords.X;
-                        short TY = (short)item.Coords.Y;
-                        byte R = (byte)item.Colours.X;
-                        byte G = (byte)item.Colours.Y;
-                        byte B = (byte)item.Colours.Z;
-                        byte A = (byte)item.Colours.W;
-
-                        byte[] buf = BitConverter.GetBytes(X);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(buf);
-                        }
-                        OutData.AddRange(buf);
-
-                        buf = BitConverter.GetBytes(Y);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(buf);
-                        }
-                        OutData.AddRange(buf);
-
-                        buf = BitConverter.GetBytes(Z);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(buf);
-                        }
-                        OutData.AddRange(buf);
-
-                        buf = BitConverter.GetBytes(flag);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(buf);
-                        }
-                        OutData.AddRange(buf);
-
-                        buf = BitConverter.GetBytes(TX);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(buf);
-                        }
-                        OutData.AddRange(buf);
-
-                        buf = BitConverter.GetBytes(TY);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(buf);
-                        }
-                        OutData.AddRange(buf);
-
-                        OutData.Add(R);
-                        OutData.Add(G);
-                        OutData.Add(B);
-                        OutData.Add(A);
-                    }
-                }
-
-                Console.WriteLine("Vertex Data parsed");
-                */
-
 
                 #region DEFINES
                 ImageFormats.Add("G_IM_FMT_RGBA", 0);
@@ -586,15 +548,98 @@ namespace BombermanObjectCompiler
                     }
 
                     int VTXStart = 0;
-                    int relstart = 0;
+                    int relstart = 0;                    
 
-                    ParseDL(MainFile, Pair.MatLine + 1, TexturePairs, Vertices, ref buf, ref L, true, ref p);
+                    ParseDL(MainFile, Pair.VTXline + 1, TexturePairs, Vertices, ref buf, ref Pairs, false, ref p);
+
                     VTXStart = OutData.Count + buf.Count;
-                    relstart = buf.Count;
-                    ParseDL(MainFile, Pair.VTXline + 1, TexturePairs, Vertices, ref buf, ref L, false, ref p);
-                    //vertex data should be loaded in by now :)
+                    foreach (VTX_Item item in p.Myvertices)
+                    {
+#if DEBUG
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine("Adding vertex data at 0x" + (OutData.Count + buf.Count).ToString("X"));
+                        if (((OutData.Count + buf.Count) % 4) != 0)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine("NOT 4 BYTE ALIGNED HELP");
+                            Console.WriteLine($"Off by {(OutData.Count + buf.Count) % 4}");
+                        }
+                        Console.ForegroundColor = ConsoleColor.White;
+#endif
 
-                    byte[] a = BitConverter.GetBytes(OutData.Count + buf.Count);
+                        short X = (short)item.Pos.X; //0x2
+                        short Y = (short)item.Pos.Y; //0x4
+                        short Z = (short)item.Pos.Z; //0x6
+                        ushort flag = (ushort)item.flag; //0x8
+                        short TX = (short)item.Coords.X; //0xA
+                        short TY = (short)item.Coords.Y; //0xC
+                        byte R = (byte)item.Colours.X; //0xD
+                        byte G = (byte)item.Colours.Y; //0xE
+                        byte B = (byte)item.Colours.Z; //0xF
+                        byte A = (byte)item.Colours.W; //0x10
+
+                        byte[] nuf = BitConverter.GetBytes(X);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        buf.AddRange(nuf);
+
+                        nuf = BitConverter.GetBytes(Y);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        buf.AddRange(nuf);
+
+                        nuf = BitConverter.GetBytes(Z);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        buf.AddRange(nuf);
+
+                        //nuf = BitConverter.GetBytes((short)(0));
+                        //buf.AddRange(nuf);
+
+                        nuf = BitConverter.GetBytes(flag);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        buf.AddRange(nuf);
+
+                        nuf = BitConverter.GetBytes(TX);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        buf.AddRange(nuf);
+
+                        nuf = BitConverter.GetBytes(TY);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(nuf);
+                        }
+                        buf.AddRange(nuf);
+
+                        buf.Add(R);
+                        buf.Add(G);
+                        buf.Add(B);
+                        buf.Add(A);
+                    }
+
+                    int MyPos = OutData.Count + buf.Count;
+
+                    //ParseDL(PreDLAdditions, 0, TexturePairs, Vertices, ref buf, ref L, true, ref p);
+                    ParseDL(MainFile, Pair.MatLine + 1, TexturePairs, Vertices, ref buf, ref L, true, ref p);                    
+                    relstart = buf.Count;
+                    ParseDL(MainFile, Pair.VTXline + 1, TexturePairs, Vertices, ref buf, ref L, true, ref p);
+                    ParseDL(new List<string>(PostDLAdditions), 0, TexturePairs, Vertices, ref buf, ref L, false, ref p);
+                    //vertex data should be loaded in by now :)
+                    //VTXStart = OutData.Count + buf.Count;
+
+                    byte[] a = BitConverter.GetBytes(VTXStart);
                     if (BitConverter.IsLittleEndian)
                     {
                         Array.Reverse(a);
@@ -602,67 +647,6 @@ namespace BombermanObjectCompiler
                     buf[relstart + 5] = a[1];
                     buf[relstart + 1 + 5] = a[2];
                     buf[relstart + 2 + 5] = a[3];
-
-                    foreach (VTX_Item item in Pair.Myvertices)
-                    {
-                        short X = (short)item.Pos.X;
-                        short Y = (short)item.Pos.Y;
-                        short Z = (short)item.Pos.Z;
-                        ushort flag = (ushort)item.flag;
-                        short TX = (short)item.Coords.X;
-                        short TY = (short)item.Coords.Y;
-                        byte R = (byte)item.Colours.X;
-                        byte G = (byte)item.Colours.Y;
-                        byte B = (byte)item.Colours.Z;
-                        byte A = (byte)item.Colours.W;
-
-                        byte[] nuf = BitConverter.GetBytes(X);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(nuf);
-                        }
-                        OutData.AddRange(buf);
-
-                        nuf = BitConverter.GetBytes(Y);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(nuf);
-                        }
-                        OutData.AddRange(nuf);
-
-                        nuf = BitConverter.GetBytes(Z);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(nuf);
-                        }
-                        OutData.AddRange(nuf);
-
-                        nuf = BitConverter.GetBytes(flag);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(nuf);
-                        }
-                        OutData.AddRange(nuf);
-
-                        nuf = BitConverter.GetBytes(TX);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(nuf);
-                        }
-                        OutData.AddRange(nuf);
-
-                        nuf = BitConverter.GetBytes(TY);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(nuf);
-                        }
-                        OutData.AddRange(nuf);
-
-                        OutData.Add(R);
-                        OutData.Add(G);
-                        OutData.Add(B);
-                        OutData.Add(A);
-                    }
 
 
                     //
@@ -680,10 +664,11 @@ namespace BombermanObjectCompiler
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine($"Header index: {OverwriteIndex.ToString("X")}...");
                     Console.WriteLine($"Pair index: {PairIndex+1}...");
+                    Console.WriteLine($"Vertices position: {VTXStart.ToString("X")}...");
                     Console.ForegroundColor = ConsoleColor.White;
 #endif
                     OutData.RemoveRange(OverwriteIndex, 4); //remove buffer offset
-                    byte[] buffer = BitConverter.GetBytes(OutData.Count + 0x4);
+                    byte[] buffer = BitConverter.GetBytes(MyPos);
                     if (BitConverter.IsLittleEndian)
                     {
                         Array.Reverse(buffer);
@@ -692,6 +677,79 @@ namespace BombermanObjectCompiler
                     OutData.AddRange(buf);
                     PairIndex++;
                 }
+
+                //setup second to final DL (scale and position I think? bones I guess)
+                int OVI = (0x14 + ((0x4 * 3) * PairIndex));
+                OutData.RemoveRange(OVI, 4);
+                byte[] suffer = BitConverter.GetBytes(OutData.Count + 4);
+                if (BitConverter.IsLittleEndian)
+                {
+                    Array.Reverse(suffer);
+                }
+                OutData.InsertRange(OVI, suffer); //add in the offset
+
+                
+                for(int i = 0; i < DLCount; i++)
+                {
+                    if(i == 0)
+                    {
+                        OutData.AddRange(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, });
+                    }
+                    else
+                    {
+                        suffer = BitConverter.GetBytes(i-1);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(suffer);
+                        }
+                        OutData.AddRange(suffer);
+                    }
+
+                    OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    OutData.AddRange(new byte[] { 0x3F, 0x80, 0x00, 0x00 });
+                    OutData.AddRange(new byte[] { 0x3F, 0x80, 0x00, 0x00 });
+                    OutData.AddRange(new byte[] { 0x3F, 0x80, 0x00, 0x00 });                    
+                    if(i < 2 && i != DLCount - 1)
+                    {
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x01 });
+                    }
+                    else if (i != DLCount - 1)
+                    {
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x01 });
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    }        
+                    else
+                    {
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                        OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00 });
+                    }
+                }
+
+                PairIndex++;
+                PairIndex++;
+
+                //final DL
+                OVI = (0x14 + ((0x4 * 3) * PairIndex));
+                OutData.RemoveRange(OVI, 4);
+                suffer = BitConverter.GetBytes(OutData.Count + 4);
+                if (BitConverter.IsLittleEndian)
+                {
+                    Array.Reverse(suffer);
+                }
+                OutData.InsertRange(OVI, suffer); //add in the offset
+
+                OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x11});
+                OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x13});
+                OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x15});
+                OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x35});
+                OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x33});
+                OutData.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x34});
 
                 File.WriteAllBytes(args[0] + "\\outmodel.bin", OutData.ToArray());
 
@@ -809,6 +867,8 @@ namespace BombermanObjectCompiler
 
                                 suf.Add(Cur);
                             }
+
+                            CurPair.Myvertices = suf;
                         }
 
                         break;

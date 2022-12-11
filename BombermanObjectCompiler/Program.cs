@@ -100,7 +100,7 @@ namespace BombermanObjectCompiler
                             {
                                 MainDLOffset = FindResourceLine(MainFile, TrimExcess(line) + "[] =");
                                 MainDLOffset = MainDLOffset + 1;
-
+                                /*
                                 Console.WriteLine($"Pre splitting GFX line {TrimExcess(line)} if needed...");
                                 //copy to temp buffer
                                 List<string> tmpBuf = new List<string>();
@@ -170,13 +170,37 @@ namespace BombermanObjectCompiler
                                 //now take out the original function and replace it with my new one
                                 MainFile.RemoveRange(MainDLOffset - 1, DLEnd - MainDLOffset + 2);
                                 MainFile.InsertRange(MainDLOffset, OverWriteBuf);
-
+                                */
                                 break;
                             }
                     }
                     Index++;
                 }
                 
+                for(int i = 0; i < MainFile.Count; i++)
+                {
+                    if(MainFile[i].Contains("gsDPSetTextureLUT("))
+                    {
+                        string f = MainFile[i].Replace("gsDPSetTextureLUT(", "gsSPSetOtherMode(G_SETOTHERMODE_H, G_MDSFT_TEXTLUT, 2, ");
+                        MainFile[i] = f;
+                    }
+                    if(MainFile[i].Contains("gsDPSetCycleType("))
+                    {
+                        string f = MainFile[i].Replace("gsDPSetCycleType(", "gsSPSetOtherMode(G_SETOTHERMODE_H, G_MDSFT_CYCLETYPE, 2, ");
+                        MainFile[i] = f;
+                    }
+                    if (MainFile[i].Contains("gsDPSetTextureLOD("))
+                    {
+                        string f = MainFile[i].Replace("gsDPSetTextureLOD(", "gsSPSetOtherMode(G_SETOTHERMODE_H, G_MDSFT_TEXTLOD, 1, ");
+                        MainFile[i] = f;
+                    }
+                    if (MainFile[i].Contains("gsDPSetTexturePersp("))
+                    {
+                        string f = MainFile[i].Replace("gsDPSetTexturePersp(", "gsSPSetOtherMode(G_SETOTHERMODE_H, G_MDSFT_TEXTPERSP, 1, ");
+                        MainFile[i] = f;
+                    }
+                }
+
                 MainDLOffset = FindResourceLine(MainFile, "Gfx " +TrimExcess(Header[Header.Count() - 1].Split(' ')[2]) + "[] =");
                 MainDLOffset++;
 
@@ -533,9 +557,10 @@ namespace BombermanObjectCompiler
                         string[] Params = GetParams(File[Line]);
 
                         UInt32 VTXLine = (UInt32)Vertices["Vtx " + Params[0].Split('+')[0].Trim()].VertexOffset;
-                        VTXLine += UInt32.Parse(Params[0].Split('+')[1].Trim()); //SS values, load in bank 02
+                        VTXLine += (UInt32.Parse(Params[0].Split('+')[1].Trim()) * 16); //SS values, load in bank 02
 
                         VTXLine += 0x02000000; //set bank
+
                         byte N = byte.Parse(Params[1]);
                         byte II = byte.Parse(Params[2]);
 
@@ -611,82 +636,72 @@ namespace BombermanObjectCompiler
                         break;
                     }
                 case "gsDPSetCombineLERP":
-                    {
-                        //haha fuck this for now
-                        Outdata.AddRange(new byte[] { 0xFC, 0x12, 0x7E, 0x24, 0xFF, 0xFF, 0xF3, 0xF9 });
-                        //FCFFFFFFFFFE793E
-                        //Outdata.AddRange(new byte[] { 0xFC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0x79, 0x3E });
-
-                        /*
-                        UInt64 MyData = 0xFC00000000000000;
-                        byte buf = 0;
+                    {                      
                         string[] Params = GetParams(File[Line]);
-                        buf = CombinerValues[Params[0].Trim()]; //a
-                        MyData |= (UInt64)buf << 52;
-                        buf = CombinerValues[Params[1].Trim()]; //b
-                        MyData |= (UInt64)buf << 29;
-                        buf = CombinerValues[Params[2].Trim()]; //c
-                        MyData |= (UInt64)buf << 47;
-                        buf = CombinerValues[Params[3].Trim()]; //d
-                        MyData |= (UInt64)buf << 15;
-                        buf = CombinerValuesAlpha[Params[4].Trim()]; //e
-                        MyData |= (UInt64)buf << 44;
-                        buf = CombinerValuesAlpha[Params[5].Trim()]; //f
-                        MyData |= (UInt64)buf << 12;
-                        buf = CombinerValuesAlpha[Params[6].Trim()]; //g
-                        MyData |= (UInt64)buf << 41;
-                        buf = CombinerValuesAlpha[Params[7].Trim()]; //h
-                        MyData |= (UInt64)buf << 9;
-                        buf = CombinerValues[Params[8].Trim()]; //i
-                        MyData |= (UInt64)buf << 38;
-                        buf = CombinerValues[Params[9].Trim()]; //j
-                        MyData |= (UInt64)buf << 25;
-                        buf = CombinerValues[Params[10].Trim()]; //k
-                        MyData |= (UInt64)buf << 33;
-                        buf = CombinerValues[Params[11].Trim()]; //l
-                        MyData |= (UInt64)buf << 6;
-                        buf = CombinerValuesAlpha[Params[12].Trim()]; //m
-                        MyData |= (UInt64)buf << 21;
-                        buf = CombinerValuesAlpha[Params[13].Trim()]; //n
-                        MyData |= (UInt64)buf << 3;
-                        buf = CombinerValuesAlpha[Params[14].Trim()]; //o
-                        MyData |= (UInt64)buf << 18;
-                        buf = CombinerValuesAlpha[Params[15].Trim()]; //p
-                        MyData |= (UInt64)buf;
+                        UInt64 MyData = 0xFC;
+                        UInt64 a0 = CombinerValues[Params[0].Trim()];
+                        UInt64 b0 = CombinerValues[Params[1].Trim()];
+                        UInt64 c0 = CombinerValues[Params[2].Trim()];
+                        UInt64 d0 = CombinerValues[Params[3].Trim()];
+                        UInt64 Aa0 = CombinerValuesAlpha[Params[4].Trim()];
+                        UInt64 Ab0 = CombinerValuesAlpha[Params[5].Trim()];
+                        UInt64 Ac0 = CombinerValuesAlpha[Params[6].Trim()];
+                        UInt64 Ad0 = CombinerValuesAlpha[Params[7].Trim()];
+                        UInt64 a1 = CombinerValues[Params[8].Trim()];
+                        UInt64 b1 = CombinerValues[Params[9].Trim()];
+                        UInt64 c1 = CombinerValues[Params[10].Trim()];
+                        UInt64 d1 = CombinerValues[Params[11].Trim()];
+                        UInt64 Aa1 = CombinerValuesAlpha[Params[12].Trim()];
+                        UInt64 Ab1 = CombinerValuesAlpha[Params[13].Trim()];
+                        UInt64 Ac1 = CombinerValuesAlpha[Params[14].Trim()];
+                        UInt64 Ad1 = CombinerValuesAlpha[Params[15].Trim()];
+
+                        MyData = _SHIFTL(MyData, 24, 8);
+                        UInt64 Combinervals = _SHIFTL(GCCc0w0(a0, c0, Aa0, Ac0) |
+                                                      GCCc1w0(a1, c1), 0, 24);
+                        MyData |= Combinervals;
+                        MyData <<= 32;
+
+                        Combinervals = GCCc0w1(b0, d0, Ab0, Ad0) |
+                                       GCCc1w1(b1, Aa1, Ac1, d1, Ab1, Ad1);
+                        MyData |= Combinervals;
+
+                        //Console.WriteLine(MyData.ToString("X"));
 
                         byte[] wow = BitConverter.GetBytes(MyData);
                         if(BitConverter.IsLittleEndian)
                         {
                             Array.Reverse(wow);
                         }
-                        Outdata.AddRange(wow);*/
+                        Outdata.AddRange(wow);
 
                         break;
                     }
                 case "gsSPTexture":
                     {
                         string[] Params = GetParams(File[Line]);
-                        ushort TTTT = ushort.Parse(Params[0]);
-                        ushort SSSS = ushort.Parse(Params[1]);
-                        byte NN = byte.Parse(Params[2]);
+                        ushort TTTT = ushort.Parse(Params[1]);
+                        ushort SSSS = ushort.Parse(Params[0]);
+                        byte NN = byte.Parse(Params[4]);
 
-                        byte LLL = byte.Parse(Params[3]);
-                        byte DDD = byte.Parse(Params[4]);
+                        byte LLL = byte.Parse(Params[2]);
+                        byte DDD = byte.Parse(Params[3]);
 
-                        Outdata.AddRange(new byte[] { 0xBB, 0x00 });
-                        byte XX = (byte)((LLL << 3) | DDD);
-                        Outdata.Add(XX);
+                        UInt64 Apple = 0xBB00;
+                        Apple <<= 5;
+                        Apple |= LLL;
+                        Apple <<= 3;
+                        Apple |= DDD;
 
-                        Outdata.Add(NN);
+                        Apple <<= 8;
+                        Apple |= NN;
 
-                        byte[] buf = BitConverter.GetBytes(SSSS);
-                        if (BitConverter.IsLittleEndian)
-                        {
-                            Array.Reverse(buf);
-                        }
-                        Outdata.AddRange(buf);
+                        Apple <<= 16;
+                        Apple |= SSSS;
+                        Apple <<= 16;
+                        Apple |= TTTT;
 
-                        buf = BitConverter.GetBytes(TTTT);
+                        byte[] buf = BitConverter.GetBytes(Apple);
                         if (BitConverter.IsLittleEndian)
                         {
                             Array.Reverse(buf);
@@ -726,17 +741,26 @@ namespace BombermanObjectCompiler
                         byte SFormat = SizeFormats[Params[1].Trim()];
 
                         byte XX = (byte)((BFormat << 5) | (SFormat << 3));
+                        byte W = byte.Parse(Params[2].Trim());
 
-                        int SegAddr = 2 << 24;
-                        int AddrToFind = (int)Textures["u64" + Params[3]].TexOffset;
+                        UInt64 SegAddr = 2 << 24;
+                        UInt64 AddrToFind = (UInt64)Textures["u64" + Params[3]].TexOffset;
                         SegAddr += AddrToFind;
 
-                        Outdata.Add(0xFD);
-                        Outdata.Add(XX);
-                        Outdata.Add(0x00);
-                        Outdata.Add(0x00);
+                        UInt64 MyData = 0xFD;
 
-                        byte[] buf = BitConverter.GetBytes(SegAddr);
+                        MyData <<= 3; //format
+                        MyData |= BFormat;
+                        MyData <<= 2; //bit size
+                        MyData |= SFormat;
+                        MyData <<= 3; //re-align
+                        MyData <<= 4; //move over half a byte
+                        MyData <<= 4 + 8; //move over the rest
+                        //MyData |= W; //set W parameter - redundant for this command
+                        MyData <<= 8 * 4; //scoot over 4 bytes
+                        MyData |= SegAddr;
+
+                        byte[] buf = BitConverter.GetBytes(MyData);
                         if (BitConverter.IsLittleEndian)
                         {
                             Array.Reverse(buf);
@@ -752,62 +776,65 @@ namespace BombermanObjectCompiler
                     }
                 case "gsDPSetTile":
                     {
-                        //crikey
                         string[] Params = GetParams(File[Line]);
-                        UInt64 OutBuf = 0xF500000000000000;
 
-                        OutBuf |= (ulong)((ulong)ImageFormats[Params[0].Trim()] << 53);
-                        OutBuf |= (ulong)((ulong)SizeFormats[Params[1].Trim()] << 51);
-                        
-                        short BitValues = short.Parse(Params[2]);
-                        BitValues = (short)(BitValues & 0b0000000111111111);
-                        OutBuf |= (ulong)((ulong)BitValues << 41);
+                        UInt64 OutBuf = 0xF5;
+                        OutBuf = OutBuf << 3;
+                        OutBuf |= ImageFormats[Params[0].Trim()];
 
-                        BitValues = short.Parse(Params[3]);
-                        BitValues = (short)(BitValues & 0b0000000111111111);
-                        OutBuf |= (ulong)((ulong)BitValues << 32);
+                        OutBuf = OutBuf << 2;
+                        OutBuf |= SizeFormats[Params[1].Trim()];
 
-                        byte Descriptor = byte.Parse(Params[4]);
-                        Descriptor = (byte)(Descriptor & 0b00000111);
-                        OutBuf |= (ulong)((ulong)Descriptor << 24);
+                        OutBuf = OutBuf << 1;
+                        OutBuf = OutBuf << 9;
 
-                        Descriptor = byte.Parse(Params[5]);
-                        Descriptor = (byte)(Descriptor & 0b00001111);
-                        OutBuf |= (ulong)((ulong)Descriptor << 20);
+                        ulong BitValues = ulong.Parse(Params[2]);
+                        BitValues = (ulong)(BitValues & 0b0000000111111111);
 
+                        OutBuf |= (ulong)BitValues;
+
+                        BitValues = ulong.Parse(Params[3]);
+                        BitValues = (ulong)(BitValues & 0b0000000111111111);
+                        OutBuf = OutBuf << 9;
+                        OutBuf |= (ulong)BitValues;
+
+                        OutBuf = OutBuf << 5;
+
+                        OutBuf = OutBuf << 3;
+                        OutBuf |= byte.Parse(Params[4]);
+
+                        OutBuf = OutBuf << 4;
+                        OutBuf |= byte.Parse(Params[5]);
+
+                        OutBuf = OutBuf << 2;
                         string[] TextureModes = Params[6].Split('|');
-                        Descriptor = 0;
-                        foreach(string s in TextureModes)
+                        byte Descriptor = 0;
+                        foreach (string s in TextureModes)
                         {
                             Descriptor |= (byte)TextureMicrocodes[s.Trim()];
                         }
-                        Descriptor &= (byte)0b00000011;
-                        OutBuf |= (ulong)((ulong)Descriptor << 18);
+                        OutBuf |= Descriptor;
 
-                        Descriptor = byte.Parse(Params[7]);
-                        Descriptor = (byte)(Descriptor & 0b00001111);
-                        OutBuf |= (ulong)((ulong)Descriptor << 14);
+                        OutBuf = OutBuf << 4;
+                        OutBuf |= byte.Parse(Params[7]);
 
-                        Descriptor = byte.Parse(Params[8]);
-                        Descriptor = (byte)(Descriptor & 0b00001111);
-                        OutBuf |= (ulong)((ulong)Descriptor << 10);
+                        OutBuf = OutBuf << 4;
+                        OutBuf |= byte.Parse(Params[8]);
 
+                        OutBuf = OutBuf << 2;
                         TextureModes = Params[9].Split('|');
                         Descriptor = 0;
                         foreach (string s in TextureModes)
                         {
                             Descriptor |= (byte)TextureMicrocodes[s.Trim()];
                         }
-                        Descriptor &= (byte)0b00000011;
-                        OutBuf |= (ulong)((ulong)Descriptor << 8);
+                        OutBuf |= Descriptor;
 
-                        Descriptor = byte.Parse(Params[10]);
-                        Descriptor = (byte)(Descriptor & 0b00001111);
-                        OutBuf |= (ulong)((ulong)Descriptor << 4);
+                        OutBuf = OutBuf << 4;
+                        OutBuf |= byte.Parse(Params[10]);
 
-                        Descriptor = byte.Parse(Params[11]);
-                        Descriptor = (byte)(Descriptor & 0b00001111);
-                        OutBuf |= (ulong)((ulong)Descriptor);
+                        OutBuf = OutBuf << 4;
+                        OutBuf |= byte.Parse(Params[11]);
 
                         byte[] buf = BitConverter.GetBytes(OutBuf);
                         if (BitConverter.IsLittleEndian)
@@ -819,7 +846,7 @@ namespace BombermanObjectCompiler
                     }
                 case "gsDPLoadSync":
                     {
-                        Outdata.AddRange(new byte[]{ 0xE6, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00});
+                        Outdata.AddRange(new byte[] { 0xE6, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
                         break;
                     }
                 case "gsDPLoadTLUTCmd":
@@ -830,8 +857,8 @@ namespace BombermanObjectCompiler
                         byte Descriptor = byte.Parse(Params[0]);
                         OutBuf |= ((UInt64)Descriptor << 24);
 
-                        ushort ColourCount = ushort.Parse(Params[1]);
-                        OutBuf |= ((UInt64)Descriptor << 12);
+                        ushort ColourCount = (ushort)((ushort.Parse(Params[1]) & 0x3FF) << 2);
+                        OutBuf |= ((UInt64)ColourCount << 12);
 
                         byte[] buf = BitConverter.GetBytes(OutBuf);
                         if (BitConverter.IsLittleEndian)
@@ -845,18 +872,32 @@ namespace BombermanObjectCompiler
                 case "gsDPLoadBlock":
                     {
                         string[] Params = GetParams(File[Line]);
-
+                        /*
                         UInt64 OutBuf = 0xF300000000000000;
+                        
                         ushort Dat = ushort.Parse(Params[0]);
-                        OutBuf |= (UInt64)Dat<<24;
+                        OutBuf |= (UInt64)Dat << 24;
                         Dat = ushort.Parse(Params[1]);
                         OutBuf |= (UInt64)Dat << 44;
                         Dat = ushort.Parse(Params[2]);
                         OutBuf |= (UInt64)Dat << 32;
                         Dat = ushort.Parse(Params[3]);
                         OutBuf |= (UInt64)Dat << 12;
-                        Dat = ushort.Parse(Params[3]);
+                        Dat = ushort.Parse(Params[4]);
                         OutBuf |= (UInt64)Dat;
+                        */
+
+                        UInt64 OutBuf = 0xF3;
+                        OutBuf <<= 8 + 4; //shift for S
+                        OutBuf |= ushort.Parse(Params[1]);
+                        OutBuf <<= 8 + 4; //shift for T
+                        OutBuf |= ushort.Parse(Params[2]);
+                        OutBuf <<= 8; //shift for tile descriptor
+                        OutBuf |= byte.Parse(Params[0]);
+                        OutBuf <<= 8 + 4; //shift for X
+                        OutBuf |= ushort.Parse(Params[3]);
+                        OutBuf <<= 8 + 4; //shift for D
+                        OutBuf |= ushort.Parse(Params[4]);
 
                         byte[] buf = BitConverter.GetBytes(OutBuf);
                         if (BitConverter.IsLittleEndian)
@@ -896,7 +937,7 @@ namespace BombermanObjectCompiler
 
                         UInt64 OutBuf = 0xB100000000000000;
 
-                        for(int i = 0; i < Params.Length - 1; i++)
+                        for (int i = 0; i < Params.Length - 1; i++)
                         {
                             byte dat = byte.Parse(Params[i]);
                             OutBuf |= ((UInt64)dat << 8 * (Params.Length - 2 - i)) * 2;
@@ -911,11 +952,31 @@ namespace BombermanObjectCompiler
                         Outdata.AddRange(buf);
                         break;
                     }
+                case "gsSP1Triangle":
+                    {
+                        UInt64 OutBuf = 0xBF00000000000000;
+                        string[] Params = GetParams(File[Line]);
+
+                        for (int i = 0; i < Params.Length - 1; i++)
+                        {
+                            byte dat = byte.Parse(Params[i]);
+                            OutBuf |= ((UInt64)dat << 8 * (Params.Length - 2 - i)) * 2;
+                        }
+
+                        byte[] buf = BitConverter.GetBytes(OutBuf);
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+
+                        break;
+                    }
                 case "gsSPSetOtherMode":
                     {
                         string[] Params = GetParams(File[Line]);
                         UInt64 OutBuf = 0;
-                        switch(Params[0])
+                        switch (Params[0])
                         {
                             case "G_SETOTHERMODE_H":
                                 {
@@ -935,12 +996,12 @@ namespace BombermanObjectCompiler
                                 }
                         }
 
-                        OutBuf |= (UInt64)(UInt64.Parse(Params[1]) << 40);
-                        OutBuf |= (UInt64)(UInt64.Parse(Params[2]) << 32);
+                        OutBuf |= (UInt64)OthermodeValues[Params[1].Trim()] << 40;
+                        OutBuf |= (UInt64)(UInt64.Parse(Params[2].Trim()) << 32);
 
                         string[] BitsToSet = Params[3].Split('|');
                         UInt64 Setter = 0;
-                        foreach(string s in BitsToSet)
+                        foreach (string s in BitsToSet)
                         {
                             Setter |= (UInt64)(OthermodeValues[s.Trim()]);
                         }
@@ -959,6 +1020,54 @@ namespace BombermanObjectCompiler
                 case "G_SPNOOP":
                     {
                         Outdata.AddRange(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0 }); //debug command
+                        break;
+                    }
+                case "G_RDPFULLSYNC":
+                    {
+                        Outdata.AddRange(new byte[] { 0xE9, 0, 0, 0, 0, 0, 0, 0 });
+                        break;
+                    }
+                case "gsSPSetLights1":
+                {
+                        Outdata.Add(0x10);
+                        break;
+                }
+                case "gsSPTextureRectangle":
+                    {
+                        string[] Params = GetParams(File[Line]);
+                        UInt64 Command = 0xE4;
+                        UInt64 xl = ulong.Parse(Params[0]);
+                        UInt64 yl = ulong.Parse(Params[1]);
+                        UInt64 xh = ulong.Parse(Params[2]);
+                        UInt64 yh = ulong.Parse(Params[3]);
+                        UInt64 tile = ulong.Parse(Params[4]);
+                        UInt64 s = ulong.Parse(Params[5]);
+                        UInt64 t = ulong.Parse(Params[6]);
+                        UInt64 dsdx = ulong.Parse(Params[7]);
+                        UInt64 dtdy = ulong.Parse(Params[8]);
+
+                        Command = _SHIFTL(Command, 24 + 24 + 8, 8) | _SHIFTL(xh, 12 + 12 + 24, 12) | _SHIFTL(yh, 0 + 24 + 12, 12) |
+                                  _SHIFTL(tile, 24, 3) | _SHIFTL(xl, 12, 12) | _SHIFTL(yl, 0, 12);
+                        byte[] buf = BitConverter.GetBytes(Command);
+                        if(BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+
+                        buf = BitConverter.GetBytes(gsImmp1(0xB4, _SHIFTL(s,16,16) | _SHIFTL(t,0,16)));
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
+
+                        buf = BitConverter.GetBytes(gsImmp1(0xB3, _SHIFTL(dsdx, 16, 16) | _SHIFTL(dtdy, 0, 16)));
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(buf);
+                        }
+                        Outdata.AddRange(buf);
                         break;
                     }
                 default:
@@ -1054,8 +1163,8 @@ namespace BombermanObjectCompiler
                 Cur.Pos = new Vector3(short.Parse(data[0]), short.Parse(data[1]), short.Parse(data[2]));
                 Cur.flag = ushort.Parse(data[3]);
                 Cur.Coords = new Vector2(short.Parse(data[4]), short.Parse(data[5]));
-                //Cur.Colours = new Vector4(Convert.ToInt32(data[6].Replace("0x","").Trim(),16), Convert.ToInt32(data[7].Replace("0x", "").Trim(), 16), Convert.ToInt32(data[8].Replace("0x", "").Trim(), 16), Convert.ToInt32(data[9].Replace("0x", "").Trim(), 16));
-                Cur.Colours = new Vector4(0x00, 0x7F, 0x00, 0xFF);
+                Cur.Colours = new Vector4(Convert.ToInt32(data[6].Replace("0x","").Trim(),16), Convert.ToInt32(data[7].Replace("0x", "").Trim(), 16), Convert.ToInt32(data[8].Replace("0x", "").Trim(), 16), Convert.ToInt32(data[9].Replace("0x", "").Trim(), 16));
+                //Cur.Colours = new Vector4(0x00, 0x7F, 0x00, 0xFF);
 
                 Items.Add(Cur);
                 FileLine++;
@@ -1122,6 +1231,38 @@ namespace BombermanObjectCompiler
             }
 
             return mode;
+        }
+
+        private static UInt64 _SHIFTL(UInt64 no, int Shiftamm, UInt64 Length)
+        {
+            return ((no & (UInt64)(Math.Pow(2, Length) - 1)) << Shiftamm );
+        }
+
+        private static UInt64 GCCc0w0(UInt64 saRGB0, UInt64 mRGB0, UInt64 saA0, UInt64 mA0)
+        {
+            return (_SHIFTL(saRGB0, 20, 4) | _SHIFTL(mRGB0, 15, 5) | _SHIFTL(saA0, 12, 3) | _SHIFTL(mA0, 9, 3));
+        }
+
+        private static UInt64 GCCc1w0(UInt64 saRGB1, UInt64 mRGB1)
+        {
+            return (_SHIFTL(saRGB1, 5, 4) | _SHIFTL(mRGB1, 0, 5));
+        }
+
+        private static UInt64 GCCc0w1(UInt64 sbRGB0, UInt64 aRGB0, UInt64 sbA0, UInt64 aA0)
+        {
+            return (_SHIFTL(sbRGB0, 28, 4) | _SHIFTL(aRGB0, 15, 3) | _SHIFTL(sbA0, 12, 3) | _SHIFTL(aA0, 9, 3));
+        }
+
+        private static UInt64 GCCc1w1(UInt64 sbRGB1, UInt64 saA1, UInt64 mA1, UInt64 aRGB1, UInt64 sbA1, UInt64 aA1)
+        {
+            return _SHIFTL(sbRGB1, 24, 4) | _SHIFTL(saA1, 21, 3) |
+                   _SHIFTL(mA1, 18, 3) | _SHIFTL(aRGB1, 6, 3) |
+                   _SHIFTL(sbA1, 3, 3) | _SHIFTL(aA1, 0, 3);
+        }
+
+        private static UInt64 gsImmp1(UInt64 c, UInt64 p0)
+        {
+            return _SHIFTL(c, 24 + 24 + 8, 8) | p0;
         }
     }
 }

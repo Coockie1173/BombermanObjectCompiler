@@ -1163,7 +1163,14 @@ namespace BombermanObjectCompiler
                 Cur.Pos = new Vector3(short.Parse(data[0]), short.Parse(data[1]), short.Parse(data[2]));
                 Cur.flag = ushort.Parse(data[3]);
                 Cur.Coords = new Vector2(short.Parse(data[4]), short.Parse(data[5]));
-                Cur.Colours = new Vector4(Convert.ToInt32(data[6].Replace("0x","").Trim(),16), Convert.ToInt32(data[7].Replace("0x", "").Trim(), 16), Convert.ToInt32(data[8].Replace("0x", "").Trim(), 16), Convert.ToInt32(data[9].Replace("0x", "").Trim(), 16));
+                if (data[6].Contains("0x"))
+                {
+                    Cur.Colours = new Vector4(Convert.ToInt32(data[6].Replace("0x", "").Trim(), 16), Convert.ToInt32(data[7].Replace("0x", "").Trim(), 16), Convert.ToInt32(data[8].Replace("0x", "").Trim(), 16), Convert.ToInt32(data[9].Replace("0x", "").Trim(), 16));
+                }
+                else
+                {
+                    Cur.Colours = new Vector4(Convert.ToInt32(data[6]), Convert.ToInt32(data[7]), Convert.ToInt32(data[8]), Convert.ToInt32(data[9]));
+                }
                 //Cur.Colours = new Vector4(0x00, 0x7F, 0x00, 0xFF);
 
                 Items.Add(Cur);
